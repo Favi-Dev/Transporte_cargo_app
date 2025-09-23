@@ -48,27 +48,12 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    final role = widget.user.role;
 
     if (uid != null) {
-      if (role == 'interno') {
-        _assignedVehiclesStream = FirebaseFirestore.instance
-            .collection('vehicles')
-            .where('status', isEqualTo: 'disponible')
-            .where('owner', isEqualTo: 'fernandez spa')
-            .snapshots();
-      } else if (role == 'externo') {
-        _assignedVehiclesStream = FirebaseFirestore.instance
-            .collection('vehicles')
-            .where('status', isEqualTo: 'disponible')
-            .where('owner', isNotEqualTo: 'fernandez spa')
-            .snapshots();
-      } else {
-        _assignedVehiclesStream = FirebaseFirestore.instance
-            .collection('vehicles')
-            .where('assigned_to', isEqualTo: uid)
-            .snapshots();
-      }
+      _assignedVehiclesStream = FirebaseFirestore.instance
+          .collection('vehicles')
+          .where('assigned_to', isEqualTo: uid)
+          .snapshots();
     }
   }
 
@@ -89,24 +74,17 @@ class _HomePageState extends State<HomePage> {
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => VehicleSelectionPage(role: widget.user.role),
-          ),
-        );
+        // Elimina la línea de navegación, ya que la UI se actualizará sola.
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al finalizar ruta: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al finalizar ruta: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      setState(() => _isLoading = false);
     }
   }
 
@@ -121,9 +99,25 @@ class _HomePageState extends State<HomePage> {
       return AdminDashboardScreen(adminUser: widget.user);
     }
 
-    /// Bloque 4.2: Vista del Chofer
-    /// Si el usuario no es admin, construye la vista del chofer usando el `CurvedBackgroundScaffold`
-    /// y un `StreamBuilder` para reaccionar a los cambios en su estado de asignación.
+    if (widget.user.onRoute) {
+      return StreamBuilder<QuerySnapshot>(
+        stream: _assignedVehiclesStream,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return _buildNoTripView(context);
+          }
+          return _buildOnTripView(context, snapshot.data!.docs);
+        },
+      );
+    } else {
+      return _buildNoTripView(context);
+    }
+  }
+
+  /// Bloque 4.2: Vista del Chofer
+  /// Si el usuario no es admin, construye la vista del chofer usando el `CurvedBackgroundScaffold`
+  /// y un `StreamBuilder` para reaccionar a los cambios en su estado de asignación.
+  CurvedBackgroundScaffold _buildNoTripView(BuildContext context) {
     return CurvedBackgroundScaffold(
       appBar: AppBar(title: Text("Bienvenido ${widget.user.name}")),
       body: Center(
@@ -290,6 +284,88 @@ class _HomePageState extends State<HomePage> {
             );
           },
         ),
+      ),
+    );
+  }
+
+  Widget _buildOnTripView(BuildContext context, List<DocumentSnapshot> docs) {
+    VehicleModel? vehicle;
+    VehicleModel? semi;
+    for (var doc in docs) {
+      final vehicleModel = VehicleModel.fromFirestore(doc);
+      if (vehicleModel.type == 'semi_remolque') {
+        semi = vehicleModel;
+      } else {
+        vehicle = vehicleModel;
+      }
+    }
+
+    final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+    final departureTime = widget.user.departureTime != null
+        ? dateFormat.format(widget.user.departureTime!.toDate())
+        : 'No registrada';
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.local_shipping,
+            size: 60,
+            color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.8),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Viaje en Curso',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 24),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                children: [
+                  if (vehicle != null)
+                    ListTile(
+                      leading: const Icon(Icons.local_shipping, color: Colors.white70),
+                      title: Text(vehicle.id.toUpperCase(),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      subtitle: Text(
+                          '${vehicle.brand} ${vehicle.model} (${vehicle.year})',
+                          style: const TextStyle(color: Colors.white70)),
+                    ),
+                  if (semi != null)
+                    ListTile(
+                      leading: const Icon(Icons.rv_hookup, color: Colors.white70),
+                      title: Text(semi.id.toUpperCase(),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      subtitle: Text(
+                          '${semi.brand} ${semi.model} (${semi.year})',
+                          style: const TextStyle(color: Colors.white70)),
+                    ),
+                  const Divider(color: Colors.white24, indent: 16, endIndent: 16),
+                  ListTile(
+                    leading: const Icon(Icons.timer_outlined, color: Colors.white70),
+                    title: const Text('Hora de Salida', style: TextStyle(color: Colors.white)),
+                    subtitle: Text(departureTime, style: const TextStyle(color: Colors.white70)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 30),
+          ElevatedButton(
+            onPressed: _isLoading ? null : _handleReleaseVehicle,
+            child: _isLoading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text("Finalizar Ruta"),
+          ),
+        ],
       ),
     );
   }

@@ -45,7 +45,7 @@ class AuditLogScreen extends StatelessWidget {
                   ),
                   subtitle: Text(
                     '${dateFormat.format(log.timestamp.toDate())}\nDetalles: ${log.details.toString()}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
                   ),
                   isThreeLine: true,
                 ),

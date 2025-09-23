@@ -52,6 +52,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // Nuevo método para mostrar el diálogo de confirmación
+  void _showSignOutConfirmationDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cerrar Sesión'),
+        content: const Text('¿Estás seguro de que quieres cerrar la sesión?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _signOut(context);
+            },
+            child: const Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Bloque 3.3: Método _pickAndUploadImage
   /// Método asíncrono que gestiona el flujo completo para cambiar la foto de perfil.
   /// 1. Activa el estado de carga (`_isUploading`).
@@ -275,7 +299,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: ElevatedButton(
-              onPressed: () => _signOut(context),
+              onPressed: () => _showSignOutConfirmationDialog(context),
               child: const Text('Cerrar Sesión'),
             ),
           ),
