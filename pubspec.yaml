@@ -1,0 +1,29 @@
+name: fernandez_cargo_app
+description: App Fernandez Cargo con Firebase
+version: 1.0.0+1
+publish_to: "none"
+
+environment:
+  sdk: ">=3.2.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: ^3.15.2
+  firebase_auth: ^5.7.0
+  cloud_firestore: ^5.5.0
+  intl: ^0.19.0 
+  
+  # <-- LAS DEPENDENCIAS DEBEN IR AQUÍ, ALINEADAS CON LAS OTRAS -->
+  image_picker: ^1.2.0
+  firebase_storage: ^12.4.10
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/

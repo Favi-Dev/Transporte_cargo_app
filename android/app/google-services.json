@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "631286543687",
+    "project_id": "fernandezcargo-152c2",
+    "storage_bucket": "fernandezcargo-152c2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:631286543687:android:e2073424d726a6f2e24862",
+        "android_client_info": {
+          "package_name": "com.fernandez.cargoapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCLFwrLsXJNEf6fHNWXJtIlECwK2UwDoLM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:631286543687:android:a77e6fb54af39445e24862",
+        "android_client_info": {
+          "package_name": "com.fernandez.fernandez_cargo_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCLFwrLsXJNEf6fHNWXJtIlECwK2UwDoLM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
