@@ -7,6 +7,8 @@
 /// - `curved_background_scaffold.dart`: Para el diseño base de la pantalla.
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:typed_data';
+import 'package:image_picker/image_picker.dart';
 import '../models/vehicle_model.dart';
 import '../services/firestore_service.dart';
 import '../widgets/curved_background_scaffold.dart';
@@ -41,6 +43,10 @@ class _ConfirmationPageState extends State<ConfirmationPage> {
   final FirestoreService _firestoreService = FirestoreService();
   bool _isLoading = false;
 
+  // Nuevas variables de estado para el campo de texto y la imagen.
+  final _firstOutputController = TextEditingController();
+  Uint8List? _routeDocumentBytes; // Almacena los bytes de la imagen.
+
   // Bloque 3.2: Método _getVehicleData
   /// Función auxiliar asíncrona que busca y devuelve un único `VehicleModel`
   /// desde Firestore a partir de su ID (patente). Se usa en los `FutureBuilder`
@@ -49,6 +55,27 @@ class _ConfirmationPageState extends State<ConfirmationPage> {
     final doc =
         await FirebaseFirestore.instance.collection('vehicles').doc(id).get();
     return VehicleModel.fromFirestore(doc);
+  }
+
+  // Nuevo método para seleccionar una imagen de la galería.
+  Future<void> _pickDocumentImage() async {
+    final picker = ImagePicker();
+    final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      final bytes = await pickedFile.readAsBytes();
+      setState(() {
+        _routeDocumentBytes = bytes;
+      });
+      // Muestra un SnackBar para confirmar que la imagen fue seleccionada.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Documento de ruta seleccionado.'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+    }
   }
 
   // Bloque 3.3: Método _startRoute
@@ -60,11 +87,33 @@ class _ConfirmationPageState extends State<ConfirmationPage> {
   /// 4. Si la operación es exitosa, navega de vuelta a la pantalla principal.
   /// 5. Finalmente, desactiva el estado de carga.
   void _startRoute() async {
+    // Validación del campo de texto
+    if (_firstOutputController.text.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Por favor, ingrese la primera salida.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
+      String? documentUrl;
+      // Sube la imagen si se seleccionó una.
+      if (_routeDocumentBytes != null) {
+        // Asume que tienes un método para subir el documento. Lo implementaremos más abajo.
+        documentUrl = await _firestoreService.uploadRouteDocument(_routeDocumentBytes!);
+      }
+
       await _firestoreService.assignVehiclesToDriver(
         vehicleId: widget.vehicleId,
         semiId: widget.semiId,
+        firstOutput: _firstOutputController.text.trim(),
+        routeDocumentUrl: documentUrl,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -85,6 +134,13 @@ class _ConfirmationPageState extends State<ConfirmationPage> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // Se añade el método dispose para limpiar el controlador.
+  @override
+  void dispose() {
+    _firstOutputController.dispose();
+    super.dispose();
   }
 
   // Bloque 4: Método build
@@ -147,6 +203,53 @@ class _ConfirmationPageState extends State<ConfirmationPage> {
                               size: 40, color: Colors.white70)));
                 },
               ),
+            const SizedBox(height: 20),
+            // Nuevo: Sección para subir imagen y campo de texto
+            Text('Documento de ruta y primera salida:',
+                style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  flex: 1,
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: InkWell(
+                      onTap: _pickDocumentImage,
+                      child: Card(
+                        shape: const CircleBorder(), // Marco circular
+                        color: const Color(0xFF212121), // Color actualizado
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0), // Ajuste de tamaño interno
+                          child: _routeDocumentBytes != null
+                              ? ClipOval(
+                                  child: Image.memory(_routeDocumentBytes!, fit: BoxFit.cover),
+                                )
+                              : const Icon(Icons.camera_alt, size: 50, color: Colors.white70),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 2,
+                  child: TextField(
+                    controller: _firstOutputController,
+                    decoration: InputDecoration(
+                      labelText: 'Primera salida (Ej: LTS 456)',
+                      filled: true,
+                      fillColor: Theme.of(context).cardColor.withOpacity(0.8), // Estética de las tarjetas
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12), // Bordes redondeados como las tarjetas
+                        borderSide: BorderSide(color: Colors.white70), // Bordes visibles con color
+                      ),
+                      isDense: true,
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const Spacer(),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green),

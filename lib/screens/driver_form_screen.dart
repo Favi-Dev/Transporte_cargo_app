@@ -29,7 +29,7 @@ class _DriverFormScreenState extends State<DriverFormScreen> {
   // Un getter para saber fácilmente si estamos en modo edición.
   bool get isEditMode => widget.user != null;
 
-  final List<String> _driverRoles = ['interno', 'externo'];
+  final List<String> _driverRoles = ['interno', 'externo', 'admin'];
 
   @override
   void initState() {

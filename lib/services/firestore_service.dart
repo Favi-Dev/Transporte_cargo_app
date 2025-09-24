@@ -59,9 +59,12 @@ class FirestoreService {
   /// Utiliza un `WriteBatch` para asegurar que todas las operaciones (actualizar
   /// el usuario y los vehículos) se completen de forma atómica: o todas tienen
   /// éxito, o ninguna se aplica.
+  /// Ahora acepta la primera salida y la URL del documento.
   Future<void> assignVehiclesToDriver({
     required String vehicleId,
     String? semiId,
+    String? firstOutput, // Nuevo parámetro
+    String? routeDocumentUrl, // Nuevo parámetro
   }) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception("Usuario no autenticado.");
@@ -77,6 +80,7 @@ class FirestoreService {
       'departure_time': FieldValue.serverTimestamp(),
     });
 
+    // La actualización del vehículo también debería ser parte de un batch
     final vehicleDocRef = _firestore.collection('vehicles').doc(vehicleId);
     batch.update(vehicleDocRef, {
       'status': 'ocupado',
@@ -90,6 +94,19 @@ class FirestoreService {
         'assigned_to': driverUid,
       });
     }
+
+    // Nuevo: Crea un documento de 'trips' que incluye la nueva información.
+    // Es mejor crear el trip aquí en lugar de en releaseVehiclesFromDriver.
+    final tripDocRef = _firestore.collection('trips').doc();
+    batch.set(tripDocRef, {
+      'driverId': driverUid,
+      'startTime': FieldValue.serverTimestamp(),
+      'endTime': null, // Viaje en curso
+      'vehicleId': vehicleId,
+      'semiId': semiId,
+      'first_output': firstOutput, // Nuevo: Primera salida
+      'route_document_url': routeDocumentUrl, // Nuevo: URL del documento
+    });
 
     await batch.commit();
   }
@@ -435,5 +452,22 @@ class FirestoreService {
       action: 'DRIVER_DEACTIVATED',
       details: {'driverUid': driverUid},
     );
+  }
+
+  /// Nuevo método en el Bloque 2 para subir el documento de ruta
+  /// Sube el documento de ruta a Firebase Storage y devuelve su URL.
+  Future<String> uploadRouteDocument(Uint8List fileBytes) async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception("Usuario no autenticado.");
+
+    try {
+      final storagePath = 'route_documents/${user.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final ref = _storage.ref(storagePath);
+      await ref.putData(fileBytes);
+      final downloadUrl = await ref.getDownloadURL();
+      return downloadUrl;
+    } catch (e) {
+      throw Exception('Error al subir el documento de ruta: $e');
+    }
   }
 }
