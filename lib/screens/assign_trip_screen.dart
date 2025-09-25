@@ -1,20 +1,16 @@
+// lib/screens/assign_trip_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../models/user_model.dart';
 import '../models/vehicle_model.dart';
 import '../services/firestore_service.dart';
+// CAMBIO: Importar el widget renombrado.
 import '../widgets/curved_background_scaffold.dart';
 
-/// Bloque 1: Enum de Pasos
-/// Define un enumerador (`Enum`) para controlar los pasos del proceso de asignación.
-/// Esto hace el código más legible y mantenible que usar números o strings.
 enum AssignStep { selectDriver, selectVehicle }
 
-/// Bloque 2: Definición del StatefulWidget
-/// Define la pantalla `AssignTripScreen` como un `StatefulWidget`, ya que su
-/// contenido y estado cambian a medida que el administrador avanza en el proceso
-/// de selección de chofer y vehículos.
 class AssignTripScreen extends StatefulWidget {
   const AssignTripScreen({Key? key}) : super(key: key);
 
@@ -22,17 +18,7 @@ class AssignTripScreen extends StatefulWidget {
   _AssignTripScreenState createState() => _AssignTripScreenState();
 }
 
-/// Bloque 3: Clase de Estado
-/// Clase que maneja toda la lógica y el estado de la pantalla de asignación.
 class _AssignTripScreenState extends State<AssignTripScreen> {
-  /// Bloque 3.1: Variables de Estado
-  /// Declara todas las variables que la pantalla necesita "recordar" a lo largo
-  /// de su ciclo de vida.
-  /// - `_firestoreService`: Instancia para la comunicación con la base de datos.
-  /// - `_currentStep`: Controla en qué paso del asistente nos encontramos.
-  /// - `_selected...`: Almacenan las selecciones (chofer, tracto, semi) que el admin va haciendo.
-  /// - `_is...`: Banderas booleanas para estados secundarios, como el modo de selección de semi.
-  /// - Variables de filtro y búsqueda para las listas de choferes y vehículos.
   final FirestoreService _firestoreService = FirestoreService();
 
   AssignStep _currentStep = AssignStep.selectDriver;
@@ -47,14 +33,6 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
   String? _selectedVehicleTypeFilter;
   String _searchVehicleQuery = '';
 
-  /// Bloque 3.2: Métodos de Lógica de UI
-  /// Conjunto de métodos que manejan las interacciones del usuario y actualizan el
-  /// estado de la pantalla llamando a `setState`.
-  /// - `_onDriverSelected`: Se activa al tocar un chofer. Guarda la selección y avanza al paso de seleccionar vehículo.
-  /// - `_onVehicleSelected`: Gestiona la selección del vehículo principal y del semi.
-  /// - `_showSemiConfirmationDialog`: Muestra un diálogo para preguntar si se desea añadir un semi.
-  /// - `_confirmAssignment`: Contiene la lógica final para llamar al servicio de Firestore y guardar la asignación.
-  /// - `_resetVehicleSelection`: Limpia la selección de vehículos si el admin vuelve al paso anterior.
   void _onDriverSelected(UserModel driver) {
     setState(() {
       _selectedDriver = driver;
@@ -147,16 +125,10 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
     });
   }
 
-  /// Bloque 4: Método build Principal
-  /// Construye la estructura base de la pantalla.
-  /// - Usa `CurvedBackgroundScaffold` para el diseño visual.
-  /// - La `AppBar` es dinámica: su título y el botón de retroceso cambian según el paso actual (`_currentStep`).
-  /// - El cuerpo (`body`) es condicional: muestra un `CircularProgressIndicator` si está cargando,
-  ///   o llama a los métodos `_buildDriverList` o `_buildVehicleSelection` para construir la
-  ///   interfaz correspondiente al paso del asistente en el que se encuentre el admin.
   @override
   Widget build(BuildContext context) {
-    return CurvedBackgroundScaffold(
+    // CAMBIO: Se envuelve el contenido en un Scaffold...
+    return Scaffold(
       appBar: AppBar(
         title: Text(_currentStep == AssignStep.selectDriver
             ? '1. Seleccionar Chofer'
@@ -174,19 +146,17 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
               )
             : null,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _currentStep == AssignStep.selectDriver
-              ? _buildDriverList()
-              : _buildVehicleSelection(),
+      // ...y se usa CurvedBackground en el body.
+      body: CurvedBackground(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _currentStep == AssignStep.selectDriver
+                ? _buildDriverList()
+                : _buildVehicleSelection(),
+      ),
     );
   }
 
-  /// Bloque 5: Método _buildDriverList
-  /// Widget que construye la primera parte de la interfaz: la lista de choferes.
-  /// Contiene los widgets de la UI para los filtros y la búsqueda, y un `StreamBuilder`
-  /// que se conecta a la colección `users` para mostrar los choferes disponibles
-  /// en tiempo real, aplicando los filtros que el admin haya seleccionado.
   Widget _buildDriverList() {
     return Column(
       children: [
@@ -298,12 +268,6 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
     );
   }
 
-  /// Bloque 6: Método _buildVehicleSelection
-  /// Widget que construye la segunda parte de la interfaz: la selección de vehículos.
-  /// Contiene una tarjeta de resumen con el chofer ya seleccionado, la UI de filtros
-  /// para vehículos, y un `StreamBuilder` que se conecta a la colección `vehicles` para
-  /// mostrar los vehículos disponibles. Crucialmente, aplica un filtro basado en el
-  /// rol del chofer seleccionado para asegurar que solo se muestren vehículos válidos.
   Widget _buildVehicleSelection() {
     final vehicleTypesToShow =
         _isSelectingSemi ? ['semi_remolque'] : ['tracto_camion', 'camion'];
@@ -422,8 +386,8 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
 
               if (vehicles.isEmpty)
                 return const Center(
-                    child:
-                        Text('No hay vehículos disponibles para este chofer.'));
+                    child: Text(
+                        'No hay vehículos disponibles para este chofer.'));
 
               return ListView.builder(
                 itemCount: vehicles.length,
@@ -433,7 +397,10 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
                       vehicle.id == _selectedSemi?.id;
                   return Card(
                     color: isSelected
-                        ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+                        ? Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withOpacity(0.5)
                         : null,
                     child: ListTile(
                       leading: Icon(
@@ -442,11 +409,11 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
                               : Icons.local_shipping,
                           color: Colors.white70),
                       title: Text(
-                        '${toBeginningOfSentenceCase(vehicle.brand) ?? vehicle.brand} ${toBeginningOfSentenceCase(vehicle.model) ?? vehicle.model}',
+                        '${toBeginningOfSentenceCase(vehicle.brand)} ${toBeginningOfSentenceCase(vehicle.model)}',
                         style: const TextStyle(color: Colors.white),
                       ),
                       subtitle: Text(
-                        'Patente: ${vehicle.id.toUpperCase()} | Color: ${toBeginningOfSentenceCase(vehicle.color) ?? vehicle.color}',
+                        'Patente: ${vehicle.id.toUpperCase()} | Color: ${toBeginningOfSentenceCase(vehicle.color)}',
                         style: const TextStyle(color: Colors.white70),
                       ),
                       onTap: () => _onVehicleSelected(vehicle),

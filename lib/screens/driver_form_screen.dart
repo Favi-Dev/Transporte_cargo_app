@@ -1,10 +1,12 @@
+// lib/screens/driver_form_screen.dart
+
 import 'package:flutter/material.dart';
 import '../models/user_model.dart';
 import '../services/firestore_service.dart';
+// CAMBIO: Importar el widget renombrado.
 import '../widgets/curved_background_scaffold.dart';
 
 class DriverFormScreen extends StatefulWidget {
-  // Ahora puede recibir un usuario existente (para editarlo) o no (para crearlo).
   final UserModel? user;
   const DriverFormScreen({Key? key, this.user}) : super(key: key);
 
@@ -19,14 +21,13 @@ class _DriverFormScreenState extends State<DriverFormScreen> {
   final _nameController = TextEditingController();
   final _rutController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _emailController = TextEditingController(); // Email de contacto
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
   String? _selectedRole;
   bool _isLoading = false;
   bool _obscurePassword = true;
 
-  // Un getter para saber fácilmente si estamos en modo edición.
   bool get isEditMode => widget.user != null;
 
   final List<String> _driverRoles = ['interno', 'externo', 'admin'];
@@ -34,7 +35,6 @@ class _DriverFormScreenState extends State<DriverFormScreen> {
   @override
   void initState() {
     super.initState();
-    // Si estamos en modo edición, rellenamos el formulario con los datos existentes.
     if (isEditMode) {
       final u = widget.user!;
       _nameController.text = u.name;
@@ -51,7 +51,6 @@ class _DriverFormScreenState extends State<DriverFormScreen> {
 
     try {
       if (isEditMode) {
-        // --- LÓGICA DE ACTUALIZACIÓN ---
         await _firestoreService.updateUser(
           uid: widget.user!.uid,
           name: _nameController.text.trim(),
@@ -61,7 +60,6 @@ class _DriverFormScreenState extends State<DriverFormScreen> {
           role: _selectedRole!,
         );
       } else {
-        // --- LÓGICA DE CREACIÓN (la que ya teníamos) ---
         await _firestoreService.createNewDriver(
           name: _nameController.text.trim(),
           rut: _rutController.text.trim(),
@@ -127,99 +125,102 @@ class _DriverFormScreenState extends State<DriverFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return CurvedBackgroundScaffold(
+    // CAMBIO: Se envuelve el contenido en un Scaffold...
+    return Scaffold(
       appBar: AppBar(
           title: Text(isEditMode ? 'Editar Chofer' : 'Añadir Nuevo Chofer')),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
-            TextFormField(
-              controller: _nameController,
-              decoration: _inputDecoration('Nombre Completo'),
-              textCapitalization: TextCapitalization.words,
-              validator: (value) =>
-                  value!.trim().isEmpty ? 'El nombre es obligatorio' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _rutController,
-              // El RUT (que se usa para el login) no se puede editar.
-              enabled: !isEditMode,
-              decoration: _inputDecoration('RUT (ej: 12345678-9)',
-                  enabled: !isEditMode),
-              validator: (value) =>
-                  value!.trim().isEmpty ? 'El RUT es obligatorio' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _emailController,
-              decoration: _inputDecoration('Email de Contacto'),
-              keyboardType: TextInputType.emailAddress,
-              validator: (value) {
-                if (value == null || value.trim().isEmpty)
-                  return 'El email es obligatorio';
-                if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value))
-                  return 'Por favor, introduce un email válido';
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _phoneController,
-              decoration: _inputDecoration('Teléfono'),
-              keyboardType: TextInputType.phone,
-              validator: (value) =>
-                  value!.trim().isEmpty ? 'El teléfono es obligatorio' : null,
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: _selectedRole,
-              decoration: _inputDecoration('Rol del Chofer'),
-              items: _driverRoles
-                  .map((role) => DropdownMenuItem<String>(
-                        value: role,
-                        child: Text(role[0].toUpperCase() + role.substring(1)),
-                      ))
-                  .toList(),
-              onChanged: (value) => setState(() => _selectedRole = value),
-              validator: (value) =>
-                  value == null ? 'Debes seleccionar un rol' : null,
-            ),
-            // El campo de contraseña solo aparece al CREAR un nuevo chofer.
-            if (!isEditMode) ...[
+      // ...y se usa CurvedBackground en el body.
+      body: CurvedBackground(
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: _inputDecoration('Nombre Completo'),
+                textCapitalization: TextCapitalization.words,
+                validator: (value) =>
+                    value!.trim().isEmpty ? 'El nombre es obligatorio' : null,
+              ),
               const SizedBox(height: 16),
               TextFormField(
-                controller: _passwordController,
-                obscureText: _obscurePassword,
-                decoration: _inputDecoration('Contraseña Inicial').copyWith(
-                  suffixIcon: IconButton(
-                    icon: Icon(_obscurePassword
-                        ? Icons.visibility_off
-                        : Icons.visibility),
-                    onPressed: () =>
-                        setState(() => _obscurePassword = !_obscurePassword),
-                  ),
-                ),
+                controller: _rutController,
+                enabled: !isEditMode,
+                decoration: _inputDecoration('RUT (ej: 12345678-9)',
+                    enabled: !isEditMode),
+                validator: (value) =>
+                    value!.trim().isEmpty ? 'El RUT es obligatorio' : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _emailController,
+                decoration: _inputDecoration('Email de Contacto'),
+                keyboardType: TextInputType.emailAddress,
                 validator: (value) {
-                  if (value == null || value.trim().length < 6)
-                    return 'La contraseña debe tener al menos 6 caracteres';
+                  if (value == null || value.trim().isEmpty)
+                    return 'El email es obligatorio';
+                  if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value))
+                    return 'Por favor, introduce un email válido';
                   return null;
                 },
               ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _phoneController,
+                decoration: _inputDecoration('Teléfono'),
+                keyboardType: TextInputType.phone,
+                validator: (value) =>
+                    value!.trim().isEmpty ? 'El teléfono es obligatorio' : null,
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _selectedRole,
+                decoration: _inputDecoration('Rol del Chofer'),
+                items: _driverRoles
+                    .map((role) => DropdownMenuItem<String>(
+                          value: role,
+                          child:
+                              Text(role[0].toUpperCase() + role.substring(1)),
+                        ))
+                    .toList(),
+                onChanged: (value) => setState(() => _selectedRole = value),
+                validator: (value) =>
+                    value == null ? 'Debes seleccionar un rol' : null,
+              ),
+              if (!isEditMode) ...[
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: _inputDecoration('Contraseña Inicial').copyWith(
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscurePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().length < 6)
+                      return 'La contraseña debe tener al menos 6 caracteres';
+                    return null;
+                  },
+                ),
+              ],
+              const SizedBox(height: 32),
+              ElevatedButton(
+                onPressed: _isLoading ? null : _submitForm,
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text(isEditMode ? 'Guardar Cambios' : 'Guardar Chofer'),
+              ),
             ],
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _submitForm,
-              child: _isLoading
-                  ? const SizedBox(
-                      height: 24,
-                      width: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : Text(isEditMode ? 'Guardar Cambios' : 'Guardar Chofer'),
-            ),
-          ],
+          ),
         ),
       ),
     );

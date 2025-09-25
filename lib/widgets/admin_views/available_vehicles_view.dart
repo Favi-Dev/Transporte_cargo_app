@@ -7,7 +7,6 @@
 /// - `vehicle_status_card.dart`: El widget reutilizable para mostrar cada vehículo.
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 import '../../models/vehicle_model.dart';
 import '../vehicle_status_card.dart';
 

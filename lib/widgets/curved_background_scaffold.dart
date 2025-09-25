@@ -1,71 +1,73 @@
-// Bloque 1: Importaciones
-/// Importa los paquetes necesarios:
-/// - `material.dart`: Para los widgets de Flutter, como Scaffold, Stack, etc.
-/// - `app_theme.dart`: Para acceder a los colores personalizados de la app, como `primaryRed`.
+// lib/widgets/curved_background_scaffold.dart
+
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-// Bloque 2: Definición del StatelessWidget
-/// Define un widget `Stateless` personalizado y reutilizable que actúa como una
-/// plantilla de pantalla para toda la aplicación. Su propósito es encapsular el
-/// diseño de fondo común (la curva roja) para no tener que repetir este código
-/// en cada pantalla nueva.
-///
-/// Acepta los mismos parámetros que un `Scaffold` normal, como `body`, `appBar` y
-/// `floatingActionButton`, para que su uso sea familiar e intuitivo.
-class CurvedBackgroundScaffold extends StatelessWidget {
-  final Widget body;
-  final AppBar? appBar;
-  final Widget? floatingActionButton;
+/// REFACTORIZACIÓN CLAVE:
+/// El widget ha sido mejorado para manejar correctamente tanto contenido estático
+/// como contenido con scroll (SingleChildScrollView).
+class CurvedBackground extends StatelessWidget {
+  final Widget child;
+  /// Factor de altura relativo al alto disponible del body (por defecto 0.2 = 20%).
+  final double heightFactor;
+  /// Altura fija opcional para la ola (tiene prioridad sobre heightFactor si se define).
+  final double? fixedHeight;
+  /// Si es true, aplica un padding inferior al contenido para evitar que quede
+  /// demasiado pegado a la curva de la ola.
+  final bool padBottomByWave;
 
-  const CurvedBackgroundScaffold({
+  const CurvedBackground({
     Key? key,
-    required this.body,
-    this.appBar,
-    this.floatingActionButton,
+    required this.child,
+    this.heightFactor = 0.2,
+    this.fixedHeight,
+    this.padBottomByWave = false,
   }) : super(key: key);
 
-  /// Bloque 3: Método build
-  /// Construye la interfaz del `CurvedBackgroundScaffold`.
-  /// - Utiliza un `Scaffold` como base para la estructura de la pantalla.
-  /// - El cuerpo (`body`) es un `Stack`, que permite superponer widgets uno encima de otro.
-  /// - En el fondo del `Stack`, se posiciona un `Container` rojo que es recortado por
-  ///   `_BottomWaveClipper` para darle la forma de ola.
-  /// - Encima de la ola, se coloca el `body` principal de la pantalla, envuelto en un
-  ///   `SafeArea` para evitar que el contenido se superponga con elementos del
-  ///   sistema operativo (como la barra de estado o el 'notch' de los móviles).
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    return Scaffold(
-      appBar: appBar,
-      floatingActionButton: floatingActionButton,
-      body: Stack(
-        children: [
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: ClipPath(
-              clipper: _BottomWaveClipper(),
-              child: Container(
-                height: size.height * 0.2,
-                color: AppTheme.primaryRed,
+    // Usar LayoutBuilder asegura que tomamos el alto real del body (ya descontado AppBar/SafeArea)
+    // evitando que la ola se vea descentrada, especialmente con contenido scrollable.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableHeight = constraints.maxHeight;
+        final waveHeight = (fixedHeight != null)
+            ? fixedHeight!.clamp(0.0, availableHeight)
+            : (availableHeight * heightFactor).clamp(0.0, availableHeight);
+
+        return Stack(
+          children: [
+            // Dibuja la ola en la parte inferior del espacio disponible.
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: ClipPath(
+                  clipper: _BottomWaveClipper(),
+                  child: Container(
+                    width: double.infinity,
+                    height: waveHeight,
+                    color: AppTheme.primaryRed,
+                  ),
+                ),
               ),
             ),
-          ),
-          SafeArea(child: body),
-        ],
-      ),
+            // El contenido (child) se coloca de forma segura sobre el fondo.
+            SafeArea(
+              child: padBottomByWave
+                  ? Padding(
+                      padding: EdgeInsets.only(bottom: waveHeight * 0.5),
+                      child: child,
+                    )
+                  : child,
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
-// Bloque 4: Clase _BottomWaveClipper
-/// Una clase privada que extiende `CustomClipper<Path>`. Su única responsabilidad
-/// es definir la forma geométrica de la curva. El método `getClip` dibuja un
-/// `Path` (trazado) que recorta su widget hijo (el `Container` rojo) para darle
-/// la apariencia de una ola cóncava, usando una curva de Bézier cuadrática.
+/// El 'clipper' que dibuja la forma de la ola no necesita ningún cambio.
 class _BottomWaveClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
@@ -79,7 +81,6 @@ class _BottomWaveClipper extends CustomClipper<Path> {
     return path;
   }
 
-  /// Indica a Flutter que no es necesario volver a dibujar la curva si el widget no cambia de tamaño.
   @override
   bool shouldReclip(CustomClipper<Path> oldClipper) => false;
 }
