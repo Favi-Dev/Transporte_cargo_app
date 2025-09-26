@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../models/vehicle_model.dart';
+import '../models/trip_model.dart'; // Nueva importación
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -41,6 +42,8 @@ class FirestoreService {
   }
 
   /// CORRECCIÓN CLAVE: Este método ahora es la ÚNICA fuente de creación de viajes.
+  /// CORRECCIÓN: Guardar la primera salida como la primera parada en 'stops'.
+  /// CORRECCIÓN: Limpia viajes abiertos y crea el nuevo viaje con 'stops'
   Future<void> assignVehiclesToDriver({
     required String vehicleId,
     String? semiId,
@@ -52,41 +55,57 @@ class FirestoreService {
 
     final driverUid = user.uid;
     final batch = _firestore.batch();
-    final userDocRef = _firestore.collection('users').doc(driverUid);
 
-    // Obtenemos el nombre del chofer para guardarlo directamente en el viaje.
+    // PASO CLAVE: Cerrar viajes anteriores sin endTime
+    final oldTripsQuery = await _firestore
+        .collection('trips')
+        .where('driverId', isEqualTo: driverUid)
+        .where('endTime', isEqualTo: null)
+        .get();
+
+    for (final doc in oldTripsQuery.docs) {
+      batch.update(doc.reference, {'endTime': Timestamp.now()});
+    }
+
+    final userDocRef = _firestore.collection('users').doc(driverUid);
     final userDoc = await userDocRef.get();
     final driverName = userDoc.data()?['name'] ?? 'Nombre no encontrado';
 
-    // 1. Actualiza el estado del usuario.
+    final now = Timestamp.now();
+
+    // 1) Estado del usuario
     batch.update(userDocRef, {
       'on_route': true,
       'current_vehicle': vehicleId,
       'current_semi': semiId,
-      'departure_time': FieldValue.serverTimestamp(),
+      'departure_time': now,
     });
 
-    // 2. Actualiza el estado de los vehículos.
+    // 2) Estado de vehículos
     final vehicleDocRef = _firestore.collection('vehicles').doc(vehicleId);
-    batch.update(
-        vehicleDocRef, {'status': 'ocupado', 'assigned_to': driverUid});
+    batch.update(vehicleDocRef, {'status': 'ocupado', 'assigned_to': driverUid});
 
     if (semiId != null) {
       final semiDocRef = _firestore.collection('vehicles').doc(semiId);
       batch.update(semiDocRef, {'status': 'ocupado', 'assigned_to': driverUid});
     }
 
-    // 3. Crea el documento ÚNICO del viaje con toda la información inicial.
+    // 3) Documento del viaje
     final tripDocRef = _firestore.collection('trips').doc();
     batch.set(tripDocRef, {
       'driverId': driverUid,
-      'driverName': driverName, // Guardamos el nombre aquí.
-      'startTime': FieldValue.serverTimestamp(),
+      'driverName': driverName,
+      'startTime': now,
       'endTime': null,
       'vehicleId': vehicleId,
       'semiId': semiId,
-      'first_output': firstOutput,
       'route_document_url': routeDocumentUrl,
+      'stops': [
+        {
+          'location': firstOutput ?? 'Salida inicial no registrada',
+          'timestamp': now,
+        }
+      ],
     });
 
     await batch.commit();
@@ -217,18 +236,32 @@ class FirestoreService {
     );
   }
 
+  /// CORRECCIÓN: Limpieza + creación de 'stops' en asignación por admin
   Future<void> assignVehiclesToDriverByAdmin({
     required String driverUid,
     required String vehicleId,
     String? semiId,
+    String? firstOutput,        // nuevo
+    String? routeDocumentUrl,   // nuevo
   }) async {
     final batch = _firestore.batch();
+
+    // Limpieza de viajes abiertos sin endTime
+    final oldTripsQuery = await _firestore
+        .collection('trips')
+        .where('driverId', isEqualTo: driverUid)
+        .where('endTime', isEqualTo: null)
+        .get();
+
+    for (final doc in oldTripsQuery.docs) {
+      batch.update(doc.reference, {'endTime': Timestamp.now()});
+    }
 
     final userDocRef = _firestore.collection('users').doc(driverUid);
     final userDoc = await userDocRef.get();
     final driverName = userDoc.data()?['name'] ?? '';
 
-    final departureTime = FieldValue.serverTimestamp();
+    final departureTime = Timestamp.now();
 
     batch.update(userDocRef, {
       'on_route': true,
@@ -238,8 +271,7 @@ class FirestoreService {
     });
 
     final vehicleDocRef = _firestore.collection('vehicles').doc(vehicleId);
-    batch.update(
-        vehicleDocRef, {'status': 'ocupado', 'assigned_to': driverUid});
+    batch.update(vehicleDocRef, {'status': 'ocupado', 'assigned_to': driverUid});
 
     if (semiId != null) {
       final semiDocRef = _firestore.collection('vehicles').doc(semiId);
@@ -254,11 +286,22 @@ class FirestoreService {
       'endTime': null,
       'vehicleId': vehicleId,
       'semiId': semiId,
+      'route_document_url': routeDocumentUrl,
+      'stops': [
+        {
+          'location': firstOutput ?? 'Asignado por administrador',
+          'timestamp': departureTime,
+        }
+      ]
     });
 
     await _createAuditLog(
       action: 'TRIP_MANUALLY_ASSIGNED',
-      details: {'driverUid': driverUid, 'vehicleId': vehicleId},
+      details: {
+        'driverUid': driverUid,
+        'vehicleId': vehicleId,
+        if (semiId != null) 'semiId': semiId
+      },
       batch: batch,
     );
 
@@ -332,6 +375,30 @@ class FirestoreService {
     }
   }
 
+  /// ===================================================================
+  /// CAMBIO: Admin puede subir documento para un chofer (driverUidForAdmin)
+  /// ===================================================================
+  Future<String> uploadRouteDocument(
+    Uint8List fileBytes, {
+    String? driverUidForAdmin,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('Usuario no autenticado.');
+    }
+
+    final targetUid = driverUidForAdmin ?? user.uid;
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final ref = _storage.ref('route_documents/$targetUid/$timestamp.jpg');
+
+    await ref.putData(
+      fileBytes,
+      SettableMetadata(contentType: 'image/jpeg'),
+    );
+
+    return await ref.getDownloadURL();
+  }
+
   Future<void> cleanOldTrips() async {
     print("Iniciando revisión de viajes antiguos...");
     try {
@@ -395,29 +462,78 @@ class FirestoreService {
     );
   }
 
-  Future<void> deactivateDriver(String driverUid) async {
+  /// Elimina permanentemente el documento del chofer en Firestore.
+  /// Nota: No elimina al usuario de Firebase Auth.
+  Future<void> deleteDriver(String driverUid) async {
     final docRef = _firestore.collection('users').doc(driverUid);
-    await docRef.update({'role': 'disabled'});
+    final userDoc = await docRef.get();
+    final userName = userDoc.data()?['name'] ?? 'N/A';
+
+    await docRef.delete();
 
     await _createAuditLog(
-      action: 'DRIVER_DEACTIVATED',
-      details: {'driverUid': driverUid},
+      action: 'DRIVER_DELETED',
+      details: {'deletedDriverUid': driverUid, 'deletedDriverName': userName},
     );
   }
 
-  Future<String> uploadRouteDocument(Uint8List fileBytes) async {
+  /// Añade una nueva parada al viaje activo del conductor.
+  Future<void> addStopToTrip(String stopLocation) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception("Usuario no autenticado.");
 
-    try {
-      final storagePath =
-          'route_documents/${user.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final ref = _storage.ref(storagePath);
-      await ref.putData(fileBytes);
-      final downloadUrl = await ref.getDownloadURL();
-      return downloadUrl;
-    } catch (e) {
-      throw Exception('Error al subir el documento de ruta: $e');
+    // 1. Busca el viaje activo del chofer (endTime == null).
+    final tripQuery = await _firestore
+        .collection('trips')
+        .where('driverId', isEqualTo: user.uid)
+        .where('endTime', isEqualTo: null)
+        .limit(1)
+        .get();
+
+    if (tripQuery.docs.isEmpty) {
+      throw Exception("No se encontró un viaje activo para este conductor.");
     }
+
+    final tripDocRef = tripQuery.docs.first.reference;
+
+    // 2. Prepara la nueva parada.
+    final newStop = {
+      'location': stopLocation,
+      'timestamp': Timestamp.now(), // CORRECCIÓN aplicada
+    };
+
+    // 3. Agrega la parada a la lista existente.
+    await tripDocRef.update({
+      'stops': FieldValue.arrayUnion([newStop]),
+    });
   }
+
+  /// ===================================================================
+  /// NUEVO MÉTODO: Obtiene viajes para la generación de reportes.
+  /// ===================================================================
+  Future<List<TripModel>> getTripsForReport({
+    String? driverId,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    // Base: solo viajes finalizados (endTime != null).
+    // ADVERTENCIA: isNotEqualTo: null puede requerir índice y en algunos casos no filtra exactamente "no null".
+    Query query = _firestore.collection('trips').where('endTime', isNotEqualTo: null);
+
+    if (driverId != null) {
+      query = query.where('driverId', isEqualTo: driverId);
+    }
+    if (startDate != null) {
+      query = query.where('startTime', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate));
+    }
+    if (endDate != null) {
+      final endOfDay = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59);
+      query = query.where('startTime', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay));
+    }
+
+    final snapshot = await query.orderBy('startTime', descending: true).get();
+
+    return snapshot.docs.map((doc) => TripModel.fromFirestore(doc)).toList();
+  }
+
 }

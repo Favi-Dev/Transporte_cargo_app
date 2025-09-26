@@ -46,7 +46,121 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _handleReleaseVehicle() async {
+  // ===================================================================
+  // Flujo de llegada y finalización de ruta
+  // ===================================================================
+  Future<void> _handleArrival() async {
+    final bool? hasArrived = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Llegada a Destino'),
+        content: const Text('¿Has llegado a una parada o destino?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('No')),
+          ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Sí')),
+        ],
+      ),
+    );
+
+    if (hasArrived != true) return;
+
+    final arrivalLocationController = TextEditingController();
+    final bool? locationConfirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Registrar Parada'),
+          content: TextField(
+            controller: arrivalLocationController,
+            decoration: const InputDecoration(
+              labelText: 'Lugar de llegada (Ej: SLC)',
+            ),
+            textCapitalization: TextCapitalization.words,
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancelar')),
+            ElevatedButton(
+                onPressed: () async {
+                  if (arrivalLocationController.text.trim().isNotEmpty) {
+                    setState(() => _isLoading = true);
+                    try {
+                      await _firestoreService
+                          .addStopToTrip(arrivalLocationController.text.trim());
+                      Navigator.of(ctx).pop(true);
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text('Error al guardar parada: $e'),
+                          backgroundColor: Colors.red));
+                      Navigator.of(ctx).pop(false);
+                    } finally {
+                      if (mounted) setState(() => _isLoading = false);
+                    }
+                  }
+                },
+                child: const Text('Guardar Parada')),
+          ],
+        );
+      },
+    );
+
+    if (locationConfirmed != true) return;
+
+    final bool? continueRoute = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Continuar Ruta?'),
+        content: const Text(
+            'La parada ha sido registrada. ¿Deseas continuar hacia otro destino?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('No, finalizar')),
+          ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Sí, continuar')),
+        ],
+      ),
+    );
+
+    if (continueRoute == true) {
+      return;
+    } else {
+      _showFinalizeConfirmation();
+    }
+  }
+
+  void _showFinalizeConfirmation() async {
+    final bool? finalize = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Seguro?'),
+        content: const Text(
+            '¿Estás seguro de que quieres finalizar la ruta por completo?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Finalizar Ruta')),
+        ],
+      ),
+    );
+
+    if (finalize == true) {
+      await _finalizeRoute();
+    }
+  }
+
+  Future<void> _finalizeRoute() async {
     setState(() => _isLoading = true);
     try {
       await _firestoreService.releaseVehiclesFromDriver();
@@ -69,9 +183,7 @@ class _HomePageState extends State<HomePage> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -201,9 +313,7 @@ class _HomePageState extends State<HomePage> {
                   builder: (context, constraints) {
                     return SingleChildScrollView(
                       child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: constraints.maxHeight,
-                        ),
+                        constraints: BoxConstraints(minHeight: constraints.maxHeight),
                         child: Padding(
                           padding: const EdgeInsets.all(16.0),
                           child: Column(
@@ -260,44 +370,45 @@ class _HomePageState extends State<HomePage> {
                                           color: Colors.white24,
                                           indent: 16,
                                           endIndent: 16),
-                                      if (activeTrip?.firstOutput != null &&
-                                          activeTrip!.firstOutput!.isNotEmpty)
-                                        ListTile(
-                                            leading: const Icon(
-                                                Icons.publish,
-                                                color: Colors.white70),
-                                            title: const Text('Salida',
-                                                style: TextStyle(
-                                                    color: Colors.white)),
-                                            subtitle: Text(
-                                                activeTrip.firstOutput!,
-                                                style: const TextStyle(
-                                                    color: Colors.white70))),
+                                      // ==========================================================
+                                      // CORRECCIÓN: Se leen los datos del historial de paradas
+                                      // ==========================================================
+                                      if (activeTrip != null &&
+                                          activeTrip.stops.isNotEmpty)
+                                        ...activeTrip.stops.map((stop) {
+                                          final location = stop['location'] ?? 'Parada no registrada';
+                                          final timestamp = stop['timestamp'] as Timestamp?;
+                                          final time = timestamp != null
+                                              ? DateFormat('dd/MM HH:mm').format(timestamp.toDate())
+                                              : 'Hora no registrada';
+
+                                          return ListTile(
+                                            leading: const Icon(Icons.location_on, color: Colors.white70),
+                                            title: Text(location, style: const TextStyle(color: Colors.white)),
+                                            subtitle: Text(time, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                                          );
+                                        }).toList(),
+                                      // Mantén la hora de salida si deseas mostrarla:
                                       ListTile(
-                                          leading: const Icon(
-                                              Icons.timer_outlined,
-                                              color: Colors.white70),
-                                          title: const Text('Hora de Salida',
-                                              style: TextStyle(
-                                                  color: Colors.white)),
-                                          subtitle: Text(departureTime,
-                                              style: const TextStyle(
-                                                  color: Colors.white70))),
+                                        leading: const Icon(Icons.timer_outlined, color: Colors.white70),
+                                        title: const Text('Hora de Salida', style: TextStyle(color: Colors.white)),
+                                        subtitle: Text(departureTime, style: const TextStyle(color: Colors.white70)),
+                                      ),
                                     ],
                                   ),
                                 ),
                               ),
                               const SizedBox(height: 30),
+                              // Botón para registrar llegada o finalizar
                               ElevatedButton(
-                                onPressed:
-                                    _isLoading ? null : _handleReleaseVehicle,
+                                onPressed: _isLoading ? null : _handleArrival,
                                 child: _isLoading
                                     ? const SizedBox(
                                         height: 20,
                                         width: 20,
                                         child: CircularProgressIndicator(
                                             strokeWidth: 2))
-                                    : const Text("Finalizar Ruta"),
+                                    : const Text("Llegada a Destino"),
                               ),
                             ],
                           ),

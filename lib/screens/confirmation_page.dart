@@ -6,7 +6,6 @@ import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 import '../models/vehicle_model.dart';
 import '../services/firestore_service.dart';
-// CAMBIO: Importar el widget renombrado.
 import '../widgets/curved_background_scaffold.dart';
 
 class ConfirmationPage extends StatefulWidget {
@@ -112,10 +111,8 @@ class _ConfirmationPageState extends State<ConfirmationPage> {
 
   @override
   Widget build(BuildContext context) {
-    // CAMBIO: Se envuelve el contenido en un Scaffold...
     return Scaffold(
       appBar: AppBar(title: const Text('Resumen de Selección')),
-      // ...y se usa CurvedBackground en el body.
       body: CurvedBackground(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -128,9 +125,10 @@ class _ConfirmationPageState extends State<ConfirmationPage> {
               FutureBuilder<VehicleModel>(
                 future: _getVehicleData(widget.vehicleId),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData)
+                  if (!snapshot.hasData) {
                     return const Card(
                         child: Center(child: CircularProgressIndicator()));
+                  }
                   final vehicle = snapshot.data!;
                   return Card(
                       child: ListTile(
@@ -149,9 +147,10 @@ class _ConfirmationPageState extends State<ConfirmationPage> {
                 FutureBuilder<VehicleModel>(
                   future: _getVehicleData(widget.semiId!),
                   builder: (context, snapshot) {
-                    if (!snapshot.hasData)
+                    if (!snapshot.hasData) {
                       return const Card(
                           child: Center(child: CircularProgressIndicator()));
+                    }
                     final semi = snapshot.data!;
                     return Card(
                         child: ListTile(
@@ -171,33 +170,38 @@ class _ConfirmationPageState extends State<ConfirmationPage> {
                   style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 12),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center, // Alinea verticalmente
                 children: [
-                  Expanded(
-                    flex: 1,
-                    child: AspectRatio(
-                      aspectRatio: 1,
-                      child: InkWell(
-                        onTap: _pickDocumentImage,
-                        child: Card(
-                          shape: const CircleBorder(),
-                          color: const Color(0xFF212121),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: _routeDocumentBytes != null
-                                ? ClipOval(
-                                    child: Image.memory(_routeDocumentBytes!,
-                                        fit: BoxFit.cover),
-                                  )
-                                : const Icon(Icons.camera_alt,
-                                    size: 50, color: Colors.white70),
-                          ),
+                  // ==========================================================
+                  // CAMBIO CLAVE: Se reemplaza Expanded y AspectRatio por un SizedBox
+                  // para darle un tamaño fijo al botón de la cámara.
+                  // ==========================================================
+                  SizedBox(
+                    width: 80, // Ancho fijo
+                    height: 80, // Alto fijo
+                    child: InkWell(
+                      onTap: _pickDocumentImage,
+                      child: Card(
+                        shape: const CircleBorder(),
+                        clipBehavior: Clip.antiAlias, // Asegura que la imagen se recorte
+                        color: const Color(0xFF212121),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4.0), // Padding reducido
+                          child: _routeDocumentBytes != null
+                              ? ClipOval(
+                                  child: Image.memory(_routeDocumentBytes!,
+                                      fit: BoxFit.cover,
+                                      width: double.infinity,
+                                      height: double.infinity),
+                                )
+                              : const Icon(Icons.camera_alt,
+                                  size: 40, color: Colors.white70),
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 16),
-                  Expanded(
-                    flex: 2,
+                  Expanded( // El TextField sí mantiene el Expanded para ser flexible
                     child: TextField(
                       controller: _firstOutputController,
                       decoration: InputDecoration(
@@ -207,7 +211,7 @@ class _ConfirmationPageState extends State<ConfirmationPage> {
                             Theme.of(context).cardColor.withOpacity(0.8),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.white70),
+                          borderSide: const BorderSide(color: Colors.white70),
                         ),
                         isDense: true,
                       ),

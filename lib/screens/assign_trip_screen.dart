@@ -1,15 +1,17 @@
 // lib/screens/assign_trip_screen.dart
 
+import 'dart:typed_data'; // Nuevo
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart'; // Nuevo
 import 'package:intl/intl.dart';
 import '../models/user_model.dart';
 import '../models/vehicle_model.dart';
 import '../services/firestore_service.dart';
-// CAMBIO: Importar el widget renombrado.
 import '../widgets/curved_background_scaffold.dart';
 
-enum AssignStep { selectDriver, selectVehicle }
+/// Ahora hay 3 pasos: chofer -> vehículo(s) -> detalles (documento + primera parada)
+enum AssignStep { selectDriver, selectVehicle, addDetails }
 
 class AssignTripScreen extends StatefulWidget {
   const AssignTripScreen({Key? key}) : super(key: key);
@@ -28,10 +30,21 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
   bool _isSelectingSemi = false;
   bool _isLoading = false;
 
+  // Filtros y búsquedas
   String? _selectedRoleFilter;
   String _searchDriverQuery = '';
   String? _selectedVehicleTypeFilter;
   String _searchVehicleQuery = '';
+
+  // Nuevos para el paso de detalles
+  final _firstOutputController = TextEditingController();
+  Uint8List? _routeDocumentBytes;
+
+  @override
+  void dispose() {
+    _firstOutputController.dispose();
+    super.dispose();
+  }
 
   void _onDriverSelected(UserModel driver) {
     setState(() {
@@ -86,14 +99,62 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
     );
   }
 
+  void _resetVehicleSelection() {
+    setState(() {
+      _selectedTracto = null;
+      _selectedSemi = null;
+      _isSelectingSemi = false;
+    });
+  }
+
+  // Ir al paso de detalles
+  void _goToDetailsStep() {
+    if (_selectedDriver != null && _selectedTracto != null) {
+      setState(() => _currentStep = AssignStep.addDetails);
+    }
+  }
+
+  Future<void> _pickDocumentImage() async {
+    final picker = ImagePicker();
+    final XFile? pickedFile =
+        await picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      final bytes = await pickedFile.readAsBytes();
+      setState(() {
+        _routeDocumentBytes = bytes;
+      });
+    }
+  }
+
   Future<void> _confirmAssignment() async {
-    if (_selectedDriver == null || _selectedTracto == null) return;
+    if (_selectedDriver == null ||
+        _selectedTracto == null ||
+        _firstOutputController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ingrese la primera parada del viaje.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
+      String? documentUrl;
+      if (_routeDocumentBytes != null) {
+        documentUrl = await _firestoreService.uploadRouteDocument(
+          _routeDocumentBytes!,
+          driverUidForAdmin: _selectedDriver!.uid,
+        );
+      }
+
       await _firestoreService.assignVehiclesToDriverByAdmin(
         driverUid: _selectedDriver!.uid,
         vehicleId: _selectedTracto!.id,
         semiId: _selectedSemi?.id,
+        firstOutput: _firstOutputController.text.trim(),
+        routeDocumentUrl: documentUrl,
       );
 
       if (mounted) {
@@ -117,46 +178,62 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
     }
   }
 
-  void _resetVehicleSelection() {
-    setState(() {
-      _selectedTracto = null;
-      _selectedSemi = null;
-      _isSelectingSemi = false;
-    });
+  // Navegación atrás según el paso
+  void _navigateBack() {
+    if (_currentStep == AssignStep.addDetails) {
+      setState(() => _currentStep = AssignStep.selectVehicle);
+    } else if (_currentStep == AssignStep.selectVehicle) {
+      setState(() {
+        _currentStep = AssignStep.selectDriver;
+        _selectedDriver = null;
+        _resetVehicleSelection();
+      });
+    }
+  }
+
+  String _getAppBarTitle() {
+    switch (_currentStep) {
+      case AssignStep.selectDriver:
+        return '1. Seleccionar Chofer';
+      case AssignStep.selectVehicle:
+        return _isSelectingSemi ? 'Seleccionar Semi' : '2. Seleccionar Vehículo';
+      case AssignStep.addDetails:
+        return '3. Detalles del Viaje';
+    }
+  }
+
+  Widget _buildCurrentStep() {
+    switch (_currentStep) {
+      case AssignStep.selectDriver:
+        return _buildDriverList();
+      case AssignStep.selectVehicle:
+        return _buildVehicleSelection();
+      case AssignStep.addDetails:
+        return _buildDetailsStep();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // CAMBIO: Se envuelve el contenido en un Scaffold...
     return Scaffold(
       appBar: AppBar(
-        title: Text(_currentStep == AssignStep.selectDriver
-            ? '1. Seleccionar Chofer'
-            : (_isSelectingSemi
-                ? 'Seleccionar Semi'
-                : '2. Seleccionar Vehículo')),
-        leading: _currentStep == AssignStep.selectVehicle
+        title: Text(_getAppBarTitle()),
+        leading: _currentStep != AssignStep.selectDriver
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
-                onPressed: () => setState(() {
-                  _currentStep = AssignStep.selectDriver;
-                  _selectedDriver = null;
-                  _resetVehicleSelection();
-                }),
+                onPressed: _navigateBack,
               )
             : null,
       ),
-      // ...y se usa CurvedBackground en el body.
       body: CurvedBackground(
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
-            : _currentStep == AssignStep.selectDriver
-                ? _buildDriverList()
-                : _buildVehicleSelection(),
+            : _buildCurrentStep(),
       ),
     );
   }
 
+  // ===================== Paso 1: Lista de Choferes ======================
   Widget _buildDriverList() {
     return Column(
       children: [
@@ -215,17 +292,17 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
                 .where('on_route', isEqualTo: false)
                 .snapshots(),
             builder: (context, snapshot) {
-              if (!snapshot.hasData)
+              if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
+              }
               var drivers = snapshot.data!.docs
                   .map((doc) => UserModel.fromFirestore(doc))
                   .where((user) => user.role != 'admin')
                   .toList();
 
               if (_selectedRoleFilter != null) {
-                drivers = drivers
-                    .where((d) => d.role == _selectedRoleFilter)
-                    .toList();
+                drivers =
+                    drivers.where((d) => d.role == _selectedRoleFilter).toList();
               }
               if (_searchDriverQuery.isNotEmpty) {
                 drivers = drivers
@@ -234,9 +311,10 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
                     .toList();
               }
 
-              if (drivers.isEmpty)
+              if (drivers.isEmpty) {
                 return const Center(
                     child: Text('No hay choferes disponibles.'));
+              }
 
               return ListView.builder(
                 itemCount: drivers.length,
@@ -250,10 +328,12 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
                           style: const TextStyle(color: Colors.white70)),
                       trailing: Chip(
                         label: Text(
-                            user.role[0].toUpperCase() + user.role.substring(1),
-                            style: const TextStyle(color: Colors.white)),
-                        backgroundColor:
-                            user.role == 'interno' ? Colors.green : Colors.blue,
+                          user.role[0].toUpperCase() + user.role.substring(1),
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        backgroundColor: user.role == 'interno'
+                            ? Colors.green
+                            : Colors.blue,
                       ),
                       leading: const Icon(Icons.person, color: Colors.white70),
                       onTap: () => _onDriverSelected(user),
@@ -268,6 +348,7 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
     );
   }
 
+  // ===================== Paso 2: Selección de Vehículos ======================
   Widget _buildVehicleSelection() {
     final vehicleTypesToShow =
         _isSelectingSemi ? ['semi_remolque'] : ['tracto_camion', 'camion'];
@@ -337,8 +418,9 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
                 style: const TextStyle(
                     color: Colors.white, fontWeight: FontWeight.bold)),
             subtitle: Text(
-                'Tracto: ${_selectedTracto?.id ?? "No seleccionado"}\nSemi: ${_selectedSemi?.id ?? "No seleccionado"}',
-                style: const TextStyle(color: Colors.white70)),
+              'Tracto: ${_selectedTracto?.id ?? "No seleccionado"}\nSemi: ${_selectedSemi?.id ?? "No seleccionado"}',
+              style: const TextStyle(color: Colors.white70),
+            ),
             isThreeLine: true,
             trailing: _selectedTracto != null
                 ? TextButton(
@@ -357,19 +439,22 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
                 .where('type', whereIn: vehicleTypesToShow)
                 .snapshots(),
             builder: (context, snapshot) {
-              if (!snapshot.hasData)
+              if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
+              }
 
               var vehicles = snapshot.data!.docs
                   .map((doc) => VehicleModel.fromFirestore(doc))
                   .toList();
 
               if (_selectedDriver?.role == 'interno') {
-                vehicles =
-                    vehicles.where((v) => v.owner == 'fernandez spa').toList();
+                vehicles = vehicles
+                    .where((v) => v.owner == 'fernandez spa')
+                    .toList();
               } else if (_selectedDriver?.role == 'externo') {
-                vehicles =
-                    vehicles.where((v) => v.owner != 'fernandez spa').toList();
+                vehicles = vehicles
+                    .where((v) => v.owner != 'fernandez spa')
+                    .toList();
               }
 
               if (_selectedVehicleTypeFilter != null) {
@@ -379,15 +464,16 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
               }
               if (_searchVehicleQuery.isNotEmpty) {
                 vehicles = vehicles
-                    .where(
-                        (v) => v.id.toLowerCase().contains(_searchVehicleQuery))
+                    .where((v) =>
+                        v.id.toLowerCase().contains(_searchVehicleQuery))
                     .toList();
               }
 
-              if (vehicles.isEmpty)
+              if (vehicles.isEmpty) {
                 return const Center(
                     child: Text(
                         'No hay vehículos disponibles para este chofer.'));
+              }
 
               return ListView.builder(
                 itemCount: vehicles.length,
@@ -404,10 +490,11 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
                         : null,
                     child: ListTile(
                       leading: Icon(
-                          vehicle.type == 'semi_remolque'
-                              ? Icons.rv_hookup
-                              : Icons.local_shipping,
-                          color: Colors.white70),
+                        vehicle.type == 'semi_remolque'
+                            ? Icons.rv_hookup
+                            : Icons.local_shipping,
+                        color: Colors.white70,
+                      ),
                       title: Text(
                         '${toBeginningOfSentenceCase(vehicle.brand)} ${toBeginningOfSentenceCase(vehicle.model)}',
                         style: const TextStyle(color: Colors.white),
@@ -427,22 +514,92 @@ class _AssignTripScreenState extends State<AssignTripScreen> {
         Padding(
           padding: const EdgeInsets.all(16.0),
           child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              side: const BorderSide(color: Colors.white, width: 2),
-            ),
-            onPressed: (_selectedDriver != null &&
-                    _selectedTracto != null &&
-                    !_isLoading)
-                ? _confirmAssignment
+            onPressed: (_selectedDriver != null && _selectedTracto != null)
+                ? _goToDetailsStep
                 : null,
-            child: _isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Confirmar Asignación'),
+            child: const Text('Siguiente: Añadir Detalles'),
           ),
         )
+      ],
+    );
+  }
+
+  // ===================== Paso 3: Detalles (Documento + Primera Parada) ======================
+  Widget _buildDetailsStep() {
+    return ListView(
+      padding: const EdgeInsets.all(16.0),
+      children: [
+        Text('Confirmar asignación para:',
+            style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 8),
+        Card(
+          child: ListTile(
+            title: Text(_selectedDriver?.name ?? 'Chofer no seleccionado',
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold)),
+            subtitle: Text(
+              'Tracto: ${_selectedTracto?.id ?? "N/A"}\nSemi: ${_selectedSemi?.id ?? "N/A"}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            isThreeLine: true,
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text('Documento y primera parada:',
+            style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 80,
+                height: 80,
+                child: InkWell(
+                  onTap: _pickDocumentImage,
+                  child: Card(
+                    shape: const CircleBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    color: const Color(0xFF2C2C2C),
+                    child: _routeDocumentBytes != null
+                        ? ClipOval(
+                            child: Image.memory(_routeDocumentBytes!,
+                                fit: BoxFit.cover),
+                          )
+                        : const Icon(Icons.camera_alt,
+                            size: 40, color: Colors.white70),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: TextField(
+                  controller: _firstOutputController,
+                  decoration: InputDecoration(
+                    labelText: 'Primera parada (Ej: LTS 456)',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        const SizedBox(height: 32),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+          onPressed: _isLoading ? null : _confirmAssignment,
+          child: _isLoading
+              ? const SizedBox(
+                  height: 24,
+                  width: 24,
+                  child:
+                      CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Text('Confirmar y Asignar Viaje'),
+        ),
       ],
     );
   }

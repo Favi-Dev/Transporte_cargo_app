@@ -24,38 +24,33 @@ class DriverListView extends StatefulWidget {
 // Bloque 3: Clase de Estado
 /// Clase que maneja el estado y la lógica de la `DriverListView`.
 class _DriverListViewState extends State<DriverListView> {
-  /// Bloque 3.1: Variables de Estado
-  /// `_searchQuery` guarda el texto de búsqueda.
-  /// `_activeFilter` guarda el filtro seleccionado en el menú (por rol o estado).
   String _searchQuery = '';
   String? _activeFilter;
 
-  /// Bloque 3.2: Diálogo de Confirmación
-  /// Muestra un `AlertDialog` para confirmar la desactivación de un chofer,
-  /// previniendo acciones accidentales. Si se confirma, llama al `FirestoreService`.
-  void _showDeactivateConfirmationDialog(
-      BuildContext context, UserModel userToDeactivate) {
+  /// Diálogo de confirmación de ELIMINACIÓN permanente
+  void _showDeleteConfirmationDialog(
+      BuildContext context, UserModel userToDelete) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Confirmar Desactivación'),
+        title: const Text('Confirmar Eliminación'),
         content: Text(
-            '¿Estás seguro de que quieres desactivar a ${userToDeactivate.name}?'),
+            '¿Estás seguro de que quieres ELIMINAR PERMANENTEMENTE a ${userToDelete.name}? Esta acción no se puede deshacer.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
               child: const Text('Cancelar')),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Desactivar'),
+            child: const Text('Eliminar'),
             onPressed: () async {
               try {
-                await FirestoreService().deactivateDriver(userToDeactivate.uid);
+                await FirestoreService().deleteDriver(userToDelete.uid);
                 Navigator.of(ctx).pop();
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                      content: Text('Chofer desactivado'),
+                      content: Text('Chofer eliminado con éxito.'),
                       backgroundColor: Colors.green),
                 );
               } catch (e) {
@@ -63,7 +58,7 @@ class _DriverListViewState extends State<DriverListView> {
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                      content: Text('Error al desactivar: $e'),
+                      content: Text('Error al eliminar: $e'),
                       backgroundColor: Colors.red),
                 );
               }
@@ -290,12 +285,11 @@ class _DriverListViewState extends State<DriverListView> {
                                   user.role != 'admin' &&
                                   user.role != 'super_admin'))
                             IconButton(
-                              icon: const Icon(Icons.delete_outline,
+                              icon: const Icon(Icons.delete_forever,
                                   color: Colors.redAccent, size: 22),
-                              tooltip: 'Desactivar Usuario',
+                              tooltip: 'Eliminar Usuario',
                               onPressed: () =>
-                                  _showDeactivateConfirmationDialog(
-                                      context, user),
+                                  _showDeleteConfirmationDialog(context, user),
                             ),
                           IconButton(
                             icon: const Icon(Icons.edit,

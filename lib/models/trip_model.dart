@@ -9,8 +9,7 @@ class TripModel {
   final Timestamp? endTime;
   final String vehicleId;
   final String? semiId;
-  // CAMBIO: Se añade el campo para la primera salida.
-  final String? firstOutput;
+  final List<Map<String, dynamic>> stops;
 
   TripModel({
     required this.driverId,
@@ -19,11 +18,15 @@ class TripModel {
     this.endTime,
     required this.vehicleId,
     this.semiId,
-    this.firstOutput, // CAMBIO: Se añade al constructor.
+    required this.stops, // Se requiere la lista en el constructor.
   });
 
   factory TripModel.fromFirestore(DocumentSnapshot doc) {
     Map data = doc.data() as Map<String, dynamic>;
+    // Se convierte la lista de Firestore a un tipo seguro en Dart.
+    List<Map<String, dynamic>> stopsList =
+        List<Map<String, dynamic>>.from(data['stops'] ?? []);
+
     return TripModel(
       driverId: data['driverId'] ?? '',
       driverName: data['driverName'] ?? '',
@@ -31,8 +34,7 @@ class TripModel {
       endTime: data['endTime'],
       vehicleId: data['vehicleId'] ?? '',
       semiId: data['semiId'],
-      // CAMBIO: Se lee el dato "first_output" desde Firestore.
-      firstOutput: data['first_output'],
+      stops: stopsList, // Se asigna la lista de paradas.
     );
   }
 
@@ -44,7 +46,7 @@ class TripModel {
       'endTime': endTime,
       'vehicleId': vehicleId,
       'semiId': semiId,
-      'first_output': firstOutput,
+      'stops': stops, // Se guarda la lista de paradas.
     };
   }
 }

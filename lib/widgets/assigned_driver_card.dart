@@ -176,20 +176,24 @@ class AssignedDriverCard extends StatelessWidget {
                         ],
                       ),
                       const Divider(height: 20, color: Colors.white24),
-                      if (activeTrip?.firstOutput != null &&
-                          activeTrip!.firstOutput!.isNotEmpty)
+                      // ==========================================================
+                      // CORRECCIÓN: Se lee la primera parada de la lista 'stops'
+                      // ==========================================================
+                      if (activeTrip != null && activeTrip.stops.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8.0),
                           child: ListTile(
                             dense: true,
-                            leading: const Icon(Icons.publish,
-                                color: Colors.white70),
+                            leading: const Icon(Icons.publish, color: Colors.white70),
                             title: Text(
-                              activeTrip.firstOutput!,
+                              // Accedemos al primer elemento de la lista y a su 'location'
+                              activeTrip.stops.first['location'] ?? 'Salida no registrada',
                               style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold),
                             ),
+                            subtitle: const Text('Salida Inicial',
+                                style: TextStyle(color: Colors.white70, fontSize: 12)),
                           ),
                         ),
                       if (tracto != null)
